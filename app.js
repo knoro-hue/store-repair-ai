@@ -25,7 +25,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
   };
   const settings = () => Object.assign(
-    { store: "", reporter: "", tel: "", mail: "", mode: "proxy", proxy: "", pass: "", key: "", model: DEFAULT_MODEL },
+    { tel: "", mail: "", mode: "direct", proxy: "", pass: "", key: "", model: DEFAULT_MODEL },
     store.get(LS_SETTINGS, {})
   );
 
@@ -182,7 +182,6 @@ ${q}
 
   function firstUserTurn(input) {
     const lines = [
-      `店舗: ${settings().store || "未設定"}`,
       `場所: ${input.area || "未入力"}`,
       `状況メモ: ${input.memo || "未入力"}`,
       `お客様・スタッフへの危険: ${input.danger || "未入力"}`,
@@ -265,6 +264,8 @@ ${q}
     const input = collectInput();
     if (!state.photos.length && !input.memo) return toast("写真を撮るか、状況を入力してください");
     if (!state.photos.length && !confirm("写真なしで判定しますか？（精度が下がります）")) return;
+    const s0 = settings();
+    if (s0.mode === "direct" ? !s0.key : !s0.proxy) { toast("最初にAIの接続設定をしてください"); return $("#btnSettings").click(); }
     state.input = input;
     state.createdAt = new Date().toISOString();
     state.doneActions = new Set();
@@ -461,7 +462,7 @@ ${q}
   // ---------------- 依頼文生成（第3条①の記載事項を必ず含める） ----------------
   function subjectLine() {
     const r = state.result, s = settings();
-    return `【${r.is_emergency ? "緊急" : "修繕依頼"}】${s.store || "店舗"}／${r.item}`;
+    return `【${r.is_emergency ? "緊急" : "修繕依頼"}】${r.item}`;
   }
   function buildRequestText() {
     const r = state.result, s = settings(), inp = state.input || {};
@@ -469,7 +470,7 @@ ${q}
     const L = [];
     L.push(subjectLine(), "");
     L.push(`報告日時：${new Date(state.createdAt || Date.now()).toLocaleString("ja-JP")}`);
-    L.push(`店舗／報告者：${s.store || "-"}／${s.reporter || "-"}`, "");
+    L.push("");
     L.push("■ 判定（修繕稟議基準 第3条①）");
     L.push(`・リスク区分：${(r.risk_types || []).join("、") || "該当なし"}`);
     L.push(`・緊急案件該当：${r.is_emergency ? "該当" : "非該当"}（緊急度：${r.urgency_level}）`);
@@ -541,7 +542,7 @@ ${q}
   });
 
   // ---------------- 設定 ----------------
-  const F = ["store", "reporter", "tel", "mail", "mode", "proxy", "pass", "key", "model"];
+  const F = ["tel", "mail", "mode", "proxy", "pass", "key", "model"];
   function syncModeUI() {
     const direct = $("#s_mode").value === "direct";
     $("#s_keyWrap").classList.toggle("hidden", !direct);
@@ -562,10 +563,10 @@ ${q}
     store.set(LS_SETTINGS, s); $("#dlgSettings").close(); toast("保存しました");
   });
 
-  // URLパラメータで初期設定を配布できるようにする（例: ?proxy=https://...&store=渋谷店&tel=03...）
+  // URLパラメータで初期設定を配布できるようにする（例: ?proxy=https://...&tel=03...）
   (function bootstrapFromQuery() {
     const q = new URLSearchParams(location.search);
-    const keys = ["store", "tel", "mail", "proxy", "model"].filter((k) => q.has(k));
+    const keys = ["tel", "mail", "proxy", "model"].filter((k) => q.has(k));
     if (!keys.length) return;
     const s = settings(); keys.forEach((k) => (s[k] = q.get(k)));
     if (q.has("proxy")) s.mode = "proxy";
@@ -574,8 +575,6 @@ ${q}
     toast("初期設定を読み込みました");
   })();
 
-  // 初回起動時は設定を開く
-  if (!settings().proxy && !settings().key) setTimeout(() => $("#btnSettings").click(), 300);
 
   // テスト用フック
   window.__repairai = { state, renderResult, buildRequestText, systemPrompt, schema };

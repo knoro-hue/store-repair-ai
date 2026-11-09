@@ -49,15 +49,15 @@ wrangler deploy
 表示された `https://store-repair-ai-proxy.xxxx.workers.dev` が中継サーバーのURLです。
 
 ### 4. 店舗に配布
-次のようなURLを店舗に配ると、店舗名・本社連絡先・中継URLが最初から入った状態で開きます（パスコードだけ店舗で入力）。
+次のようなURLを店舗に配ると、中継URL・本社連絡先が最初から入った状態で開きます（パスコードだけ店舗で入力）。
 
 ```
-https://<ユーザー名>.github.io/<リポジトリ名>/?proxy=https://store-repair-ai-proxy.xxxx.workers.dev&store=渋谷店&tel=03-0000-0000&mail=repair@example.co.jp
+https://<ユーザー名>.github.io/<リポジトリ名>/?proxy=https://store-repair-ai-proxy.xxxx.workers.dev&tel=03-0000-0000&mail=repair@example.co.jp
 ```
 
 ホーム画面に追加すればアプリのように使えます。
 
-> 試すだけなら、設定で「Gemini APIキーを直接入力」を選べば中継なしで動きます（本番運用には使わないでください）。
+> 中継サーバーなしでも、設定画面に Gemini APIキーを入れるだけで使えます（初期設定はこちら）。ただし端末にキーが残るため、多店舗に配る場合は中継サーバーをおすすめします。
 
 ## モデル
 初期値は `gemini-3.8-flash` です（2026年11月時点のGA版 Flash。[モデル一覧](https://ai.google.dev/gemini-api/docs/models)）。設定画面で変更できます。中継サーバーを使う場合は、`wrangler.toml` の `ALLOWED_MODELS` に入っているモデルしか使えません。

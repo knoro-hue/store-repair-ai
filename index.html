@@ -163,20 +163,21 @@ dialog .body{padding:18px;max-height:80vh;overflow:auto}
 <dialog id="dlgSettings">
   <div class="body">
     <h2 style="margin-top:0">設定</h2>
-    <p class="muted">この端末のブラウザにのみ保存されます。</p>
-    <label>店舗名</label><input id="s_store" placeholder="例）渋谷店">
-    <label>報告者名</label><input id="s_reporter" placeholder="例）山田">
-    <label>本社 緊急連絡先（電話）</label><input id="s_tel" type="tel" placeholder="例）03-0000-0000">
-    <label>本社 依頼先メール</label><input id="s_mail" type="email" placeholder="例）repair@example.co.jp">
-    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-    <label>接続方式</label>
+    <p class="muted">この端末のブラウザにだけ保存されます。</p>
+    <label>AIへの接続方法</label>
     <select id="s_mode">
-      <option value="proxy">中継サーバー経由（推奨・APIキー不要）</option>
-      <option value="direct">Gemini APIキーを直接入力（試用向け）</option>
+      <option value="direct">Gemini APIキーを入力する（かんたん）</option>
+      <option value="proxy">中継サーバー経由（キーを店舗に配らない運用向け）</option>
     </select>
-    <div id="s_proxyWrap"><label>中継サーバーURL</label><input id="s_proxy" placeholder="https://xxxx.workers.dev"><label>店舗パスコード</label><input id="s_pass" type="password"></div>
-    <div id="s_keyWrap"><label>Gemini APIキー</label><input id="s_key" type="password" placeholder="AIza..."></div>
-    <label>モデル</label><input id="s_model" placeholder="gemini-3.8-flash">
+    <div id="s_keyWrap"><label>Gemini APIキー</label><input id="s_key" type="password" placeholder="AIza..." autocomplete="off">
+      <p class="muted" style="margin:4px 0 0">取得：<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a></p></div>
+    <div id="s_proxyWrap"><label>中継サーバーURL</label><input id="s_proxy" placeholder="https://xxxx.workers.dev"><label>パスコード</label><input id="s_pass" type="password"></div>
+    <details style="margin-top:16px">
+      <summary class="muted">任意：本社の連絡先（緊急時の電話ボタン・メール送信に使用）</summary>
+      <label>本社 緊急連絡先（電話）</label><input id="s_tel" type="tel" placeholder="例）03-0000-0000">
+      <label>本社 依頼先メール</label><input id="s_mail" type="email" placeholder="例）repair@example.co.jp">
+      <label>モデル</label><input id="s_model" placeholder="gemini-3.8-flash">
+    </details>
     <p class="muted" id="criteriaVer"></p>
     <div class="row" style="margin-top:16px">
       <button class="btn sub" type="button" id="btnCloseSettings">閉じる</button>
