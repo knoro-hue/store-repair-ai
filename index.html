@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<title>修繕AI判定</title>
+<style>
+:root{
+  --bg:#f3f4f6; --card:#fff; --text:#111827; --muted:#6b7280; --line:#e5e7eb;
+  --primary:#2563eb; --primary-ink:#fff;
+  --red:#dc2626; --red-bg:#fef2f2; --orange:#ea580c; --orange-bg:#fff7ed;
+  --yellow:#ca8a04; --yellow-bg:#fefce8; --green:#16a34a; --green-bg:#f0fdf4;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b0f17; --card:#151b26; --text:#e5e7eb; --muted:#9ca3af; --line:#273042;
+    --red-bg:#3a1414; --orange-bg:#3a2210; --yellow-bg:#352d0c; --green-bg:#0f2a18;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;
+  font-size:16px;line-height:1.55;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:10;background:#1f2937;color:#fff;
+  display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+  padding-top:max(12px,env(safe-area-inset-top))}
+header h1{font-size:17px;margin:0;font-weight:700}
+header button{background:transparent;border:1px solid #4b5563;color:#fff;border-radius:8px;padding:6px 10px;font-size:14px}
+main{max-width:640px;margin:0 auto;padding:16px;padding-bottom:120px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h2{font-size:16px;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+input,select,textarea{width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card);color:var(--text)}
+textarea{min-height:84px;resize:vertical}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:12px;
+  padding:15px;font-size:16px;font-weight:700;background:var(--primary);color:var(--primary-ink);cursor:pointer;text-decoration:none}
+.btn.sub{background:transparent;color:var(--primary);border:1.5px solid var(--primary)}
+.btn.danger{background:var(--red);color:#fff}
+.btn:disabled{opacity:.5}
+.btn+.btn{margin-top:10px}
+.photo-drop{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
+.photo-drop strong{display:block;color:var(--text);font-size:17px;margin-bottom:4px}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.thumbs div{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#000}
+.thumbs img{width:100%;height:100%;object-fit:cover}
+.thumbs button{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:14px;background:var(--card);color:var(--text)}
+.chip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.hidden{display:none!important}
+.verdict{border-radius:14px;padding:18px;margin-bottom:14px;border:2px solid}
+.verdict .lv{font-size:13px;font-weight:700;letter-spacing:.05em}
+.verdict .ttl{font-size:22px;font-weight:800;margin:4px 0 6px;line-height:1.3}
+.v-emergency{background:var(--red-bg);border-color:var(--red);color:var(--text)}
+.v-emergency .lv{color:var(--red)}
+.v-high{background:var(--orange-bg);border-color:var(--orange)} .v-high .lv{color:var(--orange)}
+.v-mid{background:var(--yellow-bg);border-color:var(--yellow)} .v-mid .lv{color:var(--yellow)}
+.v-low{background:var(--green-bg);border-color:var(--green)} .v-low .lv{color:var(--green)}
+.blink{animation:blink 1s step-start infinite}@keyframes blink{50%{opacity:.35}}
+ol.actions{padding-left:0;list-style:none;margin:10px 0 0}
+ol.actions li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+ol.actions input{width:24px;height:24px;flex:none;margin-top:1px}
+.kv{display:grid;grid-template-columns:7.5em 1fr;gap:6px 10px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:600}
+.tag{display:inline-block;font-size:12px;border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;background:var(--bg);border:1px solid var(--line)}
+.risk{border-left:4px solid var(--orange);padding:8px 12px;margin:10px 0;background:var(--bg);border-radius:0 8px 8px 0}
+.risk .meta{font-size:12px;color:var(--muted)}
+.q{margin-bottom:12px}.q .why{font-size:12px;color:var(--muted)}
+pre.draft{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);
+  border-radius:10px;padding:12px;font-size:14px;font-family:inherit;margin:0}
+.muted{color:var(--muted);font-size:13px}
+.footer-bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
+  padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));z-index:9}
+.footer-bar .inner{max-width:640px;margin:0 auto}
+.spinner{width:20px;height:20px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hist-item{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.hist-item img{width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none;background:#000}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+dialog{border:0;border-radius:16px;padding:0;width:min(560px,94vw);background:var(--card);color:var(--text)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog .body{padding:18px;max-height:80vh;overflow:auto}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:50}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛠 修繕AI判定</h1>
+  <div style="display:flex;gap:6px">
+    <button id="btnHistory" type="button">履歴</button>
+    <button id="btnSettings" type="button">設定</button>
+  </div>
+</header>
+
+<main>
+  <!-- ========== STEP1: 入力 ========== -->
+  <section id="inputView">
+    <div class="card">
+      <h2>① 写真を撮る（最大4枚）</h2>
+      <label class="photo-drop" for="photoInput" style="margin:0">
+        <strong>📷 タップして撮影 / 選択</strong>
+        全体が分かる写真＋近接写真があると精度が上がります
+      </label>
+      <input id="photoInput" type="file" accept="image/*" capture="environment" multiple class="hidden">
+      <div id="thumbs" class="thumbs"></div>
+    </div>
+
+    <div class="card">
+      <h2>② 分かる範囲で入力</h2>
+      <p class="muted" style="margin:0">空欄でもOK。足りない情報はAIが質問します。</p>
+
+      <label>どこで？</label>
+      <div class="chips" data-name="area">
+        <button type="button" class="chip">売場</button><button type="button" class="chip">入口・シャッター</button>
+        <button type="button" class="chip">バックヤード</button><button type="button" class="chip">トイレ・水回り</button>
+        <button type="button" class="chip">天井</button><button type="button" class="chip">外装・看板</button>
+        <button type="button" class="chip">レジ・金庫</button>
+      </div>
+
+      <label>今の状況（一言で）</label>
+      <textarea id="memo" placeholder="例）トイレ前の天井から水がポタポタ落ちている。朝から。"></textarea>
+
+      <label>お客様・スタッフへの危険</label>
+      <div class="chips single" data-name="danger">
+        <button type="button" class="chip">ない</button><button type="button" class="chip">ありそう</button>
+        <button type="button" class="chip">すでにケガ・事故あり</button><button type="button" class="chip">分からない</button>
+      </div>
+
+      <label>営業への影響</label>
+      <div class="chips single" data-name="impact">
+        <button type="button" class="chip">影響なし</button><button type="button" class="chip">一部支障</button>
+        <button type="button" class="chip">営業できない</button><button type="button" class="chip">分からない</button>
+      </div>
+
+      <label>いつから？</label>
+      <div class="chips single" data-name="since">
+        <button type="button" class="chip">今さっき</button><button type="button" class="chip">今日</button>
+        <button type="button" class="chip">数日前</button><button type="button" class="chip">1週間以上前</button>
+      </div>
+
+      <label>状態は？</label>
+      <div class="chips single" data-name="trend">
+        <button type="button" class="chip">悪化している</button><button type="button" class="chip">変わらない</button>
+        <button type="button" class="chip">分からない</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== STEP2: 結果 ========== -->
+  <section id="resultView" class="hidden"></section>
+</main>
+
+<div class="footer-bar">
+  <div class="inner">
+    <button id="btnAnalyze" class="btn" type="button">AIに判定してもらう</button>
+  </div>
+</div>
+
+<!-- 設定 -->
+<dialog id="dlgSettings">
+  <div class="body">
+    <h2 style="margin-top:0">設定</h2>
+    <p class="muted">この端末のブラウザにのみ保存されます。</p>
+    <label>店舗名</label><input id="s_store" placeholder="例）渋谷店">
+    <label>報告者名</label><input id="s_reporter" placeholder="例）山田">
+    <label>本社 緊急連絡先（電話）</label><input id="s_tel" type="tel" placeholder="例）03-0000-0000">
+    <label>本社 依頼先メール</label><input id="s_mail" type="email" placeholder="例）repair@example.co.jp">
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <label>接続方式</label>
+    <select id="s_mode">
+      <option value="proxy">中継サーバー経由（推奨・APIキー不要）</option>
+      <option value="direct">Gemini APIキーを直接入力（試用向け）</option>
+    </select>
+    <div id="s_proxyWrap"><label>中継サーバーURL</label><input id="s_proxy" placeholder="https://xxxx.workers.dev"><label>店舗パスコード</label><input id="s_pass" type="password"></div>
+    <div id="s_keyWrap"><label>Gemini APIキー</label><input id="s_key" type="password" placeholder="AIza..."></div>
+    <label>モデル</label><input id="s_model" placeholder="gemini-3.8-flash">
+    <p class="muted" id="criteriaVer"></p>
+    <div class="row" style="margin-top:16px">
+      <button class="btn sub" type="button" id="btnCloseSettings">閉じる</button>
+      <button class="btn" type="button" id="btnSaveSettings">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- 履歴 -->
+<dialog id="dlgHistory">
+  <div class="body">
+    <h2 style="margin-top:0">判定履歴（この端末）</h2>
+    <div id="histList"></div>
+    <button class="btn sub" type="button" style="margin-top:14px" onclick="document.getElementById('dlgHistory').close()">閉じる</button>
+  </div>
+</dialog>
+
+<script src="criteria.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

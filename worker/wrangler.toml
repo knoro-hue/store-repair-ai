@@ -1,0 +1,8 @@
+name = "store-repair-ai-proxy"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# GitHub Pages の URL（末尾スラッシュなし）。複数ならカンマ区切り
+ALLOWED_ORIGIN = "https://YOUR-GITHUB-USER.github.io"
+ALLOWED_MODELS = "gemini-3.8-flash,gemini-3.6-flash"

@@ -1,0 +1,68 @@
+# 修繕AI判定（店舗向けスマホWebツール）
+
+店舗で修繕が必要な箇所を見つけたら、**写真を撮って AI（Gemini）に送るだけ**で次のことができます。
+
+- **緊急かどうかを即判定** → 緊急なら赤い画面で「今すぐやること」チェックリストと本社への電話ボタンを表示
+- **足りない情報をAIが質問** → 選んで答えると再判定。必要なら追加で撮る写真も指示
+- **緊急でなくても放置したときのリスクを表示**（時期・可能性・影響・放置時の費用感）
+- **修繕稟議基準 第3条①の記載事項**（リスク区分／緊急案件の該当有無／実施前提か／見積取得基準）を自動で判定
+- **本社への依頼文を自動作成** → 写真付きでメール・LINE・Teamsに共有、またはコピー
+- 判定履歴をスマホ内に保存（30件）
+
+判定基準は `criteria.js` にまとめてあります。基準を見直したら（第3条②）このファイルを編集するだけで反映されます。
+
+## 構成
+
+```
+index.html      画面
+app.js          画面の動きとGemini呼び出し
+criteria.js     修繕稟議基準（ここを編集すれば判定ルールが変わる）
+worker/         Gemini中継サーバー（Cloudflare Workers）※APIキーを隠すためのもの
+```
+
+ビルドは不要です。静的ファイルなので GitHub Pages でそのまま公開できます。
+
+## 導入手順
+
+### 1. Gemini APIキーを取得
+[Google AI Studio](https://aistudio.google.com/apikey) でAPIキーを作ります。
+**店舗の写真をAIの学習に使わせない**ため、課金を有効にした（有料枠の）プロジェクトのキーを使ってください。無料枠では入力データがGoogleの改善に使われることがあります（[Gemini API 利用規約](https://ai.google.dev/gemini-api/terms)）。
+
+### 2. GitHub Pages で公開
+1. このリポジトリを GitHub に push する
+2. Settings → Pages → Branch を `main` / `/ (root)` にして保存
+3. `https://<ユーザー名>.github.io/<リポジトリ名>/` で開ける
+
+### 3. 中継サーバーを用意（推奨）
+APIキーをスマホに入れると漏れる危険があるので、Cloudflare Workers（無料枠あり）で中継します。
+
+```bash
+cd worker
+npm i -g wrangler
+wrangler login
+# wrangler.toml の ALLOWED_ORIGIN を https://<ユーザー名>.github.io に書き換えてから
+wrangler secret put GEMINI_API_KEY
+wrangler secret put STORE_PASSCODE
+wrangler deploy
+```
+
+表示された `https://store-repair-ai-proxy.xxxx.workers.dev` が中継サーバーのURLです。
+
+### 4. 店舗に配布
+次のようなURLを店舗に配ると、店舗名・本社連絡先・中継URLが最初から入った状態で開きます（パスコードだけ店舗で入力）。
+
+```
+https://<ユーザー名>.github.io/<リポジトリ名>/?proxy=https://store-repair-ai-proxy.xxxx.workers.dev&store=渋谷店&tel=03-0000-0000&mail=repair@example.co.jp
+```
+
+ホーム画面に追加すればアプリのように使えます。
+
+> 試すだけなら、設定で「Gemini APIキーを直接入力」を選べば中継なしで動きます（本番運用には使わないでください）。
+
+## モデル
+初期値は `gemini-3.8-flash` です（2026年11月時点のGA版 Flash。[モデル一覧](https://ai.google.dev/gemini-api/docs/models)）。設定画面で変更できます。中継サーバーを使う場合は、`wrangler.toml` の `ALLOWED_MODELS` に入っているモデルしか使えません。
+
+## 注意
+- AIの判定は**一次判断の補助**です。最終判断・承認は部門長が行います（第4条）。
+- 写真に顧客の顔やレシートが写らないよう、店舗に周知してください。
+- 履歴はその端末のブラウザにだけ保存されます。本社で一覧管理したい場合は、kintone、Googleスプレッドシート、SharePointなどへの送信を追加してください。
