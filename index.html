@@ -166,7 +166,8 @@ dialog .body{padding:18px;max-height:80vh;overflow:auto}
     <p class="muted">この端末のブラウザにだけ保存されます。</p>
     <label>AIへの接続方法</label>
     <select id="s_mode">
-      <option value="direct">Gemini APIキーを入力する（かんたん）</option>
+      <option value="nokey">APIキーなし（Geminiアプリに引き継ぐ）</option>
+      <option value="direct">Gemini APIキーを入力する（画面内で判定）</option>
       <option value="proxy">中継サーバー経由（キーを店舗に配らない運用向け）</option>
     </select>
     <div id="s_keyWrap"><label>Gemini APIキー</label><input id="s_key" type="password" placeholder="AIza..." autocomplete="off">

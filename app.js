@@ -25,7 +25,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
   };
   const settings = () => Object.assign(
-    { tel: "", mail: "", mode: "direct", proxy: "", pass: "", key: "", model: DEFAULT_MODEL },
+    { tel: "", mail: "", mode: "nokey", proxy: "", pass: "", key: "", model: DEFAULT_MODEL },
     store.get(LS_SETTINGS, {})
   );
 
@@ -260,8 +260,9 @@ ${q}
 
   // ---------------- 実行ボタン ----------------
   $("#btnAnalyze").addEventListener("click", () => {
-    if (state.result) return resetAll();
+    if (state.result || state.handoff) return resetAll();
     const input = collectInput();
+    if (settings().mode === "nokey") return handoff(input);
     if (!state.photos.length && !input.memo) return toast("写真を撮るか、状況を入力してください");
     if (!state.photos.length && !confirm("写真なしで判定しますか？（精度が下がります）")) return;
     const s0 = settings();
@@ -273,13 +274,14 @@ ${q}
   });
 
   function updateFooter() {
-    $("#btnAnalyze").textContent = state.result ? "＋ 新しい案件を登録" : "AIに判定してもらう";
-    $("#btnAnalyze").className = state.result ? "btn sub" : "btn";
+    const done = state.result || state.handoff;
+    $("#btnAnalyze").textContent = done ? "＋ 新しい案件を登録" : (settings().mode === "nokey" ? "Geminiで判定する" : "AIに判定してもらう");
+    $("#btnAnalyze").className = done ? "btn sub" : "btn";
   }
 
   function resetAll() {
     if (!confirm("入力内容をクリアして新しい案件を始めますか？")) return;
-    Object.assign(state, { photos: [], turns: [], result: null, input: null, createdAt: null, doneActions: new Set() });
+    Object.assign(state, { handoff: null, photos: [], turns: [], result: null, input: null, createdAt: null, doneActions: new Set() });
     $("#memo").value = ""; $$(".chip.on").forEach((c) => c.classList.remove("on"));
     renderThumbs();
     $("#resultView").classList.add("hidden"); $("#inputView").classList.remove("hidden");
@@ -459,6 +461,87 @@ ${q}
     } catch (err) { if (err.name !== "AbortError") toast("共有に失敗しました"); }
   }
 
+
+  // ---------------- APIキーなしモード：Geminiアプリに引き継ぐ ----------------
+  const GEMINI_URL = "https://gemini.google.com/app";
+  let gemText = "";
+  fetch("gem/GEM_INSTRUCTIONS.md").then((r) => (r.ok ? r.text() : "")).then((t) => (gemText = t)).catch(() => {});
+
+  function buildHandoffPrompt(input) {
+    const base = gemText || systemPrompt() +
+      "\n\n# 回答のしかた\n1行目に緊急度（🚨緊急／⚠️高／📋中／✅低）と30字以内の結論。緊急なら「今すぐやること」「やってはいけないこと」を最初に。続けて、写真から見えること、稟議記載事項（重要度区分・リスク区分・緊急案件該当・実施前提か・見積取得1社/3社/概算・費用感（推測））、放置した場合の将来リスク、追加で確認したい質問（番号と選択肢つき、最大3問）。「依頼文」と言われたら本社への依頼文をコードブロックで出す。";
+    const lines = [
+      `場所：${input.area || "未入力"}`,
+      `状況メモ：${input.memo || "未入力"}`,
+      `お客様・スタッフへの危険：${input.danger || "未入力"}`,
+      `営業への影響：${input.impact || "未入力"}`,
+      `いつから：${input.since || "未入力"}`,
+      `状態の変化：${input.trend || "未入力"}`,
+      `報告日時：${new Date().toLocaleString("ja-JP")}`
+    ];
+    return `${base}\n\n---\n# 今回の案件\n${lines.join("\n")}\n\n添付した写真を見て、上の指示どおりに判定してください。写真がない場合は、まず撮影を促してください。`;
+  }
+
+  function handoff(input) {
+    state.input = input;
+    state.handoff = buildHandoffPrompt(input);
+    const hasPhotos = state.photos.length > 0;
+    $("#resultView").innerHTML = `
+      <div class="verdict v-low" style="border-color:var(--primary);background:var(--card)">
+        <div class="lv" style="color:var(--primary)">APIキーなしモード</div>
+        <div class="ttl">Geminiで判定します</div>
+        <div style="font-size:14px">判定用の指示文をコピーして、Geminiを開きます。</div>
+      </div>
+      <div class="card">
+        <button class="btn" type="button" id="btnGoGemini">📋 指示文をコピーしてGeminiを開く</button>
+        <ol style="padding-left:1.3em;margin:14px 0 0;font-size:15px">
+          <li>Geminiの入力欄を<b>長押し →「ペースト」</b></li>
+          <li><b>📷（または＋）</b>で修繕箇所を撮影・添付${hasPhotos ? "<br><span class='muted'>このページで撮った写真は端末に保存されていないことがあります。その場合はGeminiで撮り直すか、下の「写真ごと共有」を使ってください</span>" : ""}</li>
+          <li><b>送信</b> → 1行目に緊急度が出ます。🚨なら表示された行動を今すぐ実行</li>
+          <li>質問に答え終わったら「<b>依頼文</b>」と送ると、本社への依頼文が出ます</li>
+        </ol>
+        ${hasPhotos ? `<button class="btn sub" type="button" id="btnShareGemini">📤 写真ごとGeminiアプリに共有</button>
+          <p class="muted">共有先の一覧にGeminiが出ない場合は、上のボタンを使ってください。</p>` : ""}
+        <details style="margin-top:12px"><summary class="muted">コピーされる指示文を見る</summary>
+          <pre class="draft" id="handoffText" style="max-height:260px;overflow:auto;font-size:12px">${esc(state.handoff)}</pre></details>
+      </div>
+      ${settings().tel ? `<a class="btn danger" href="tel:${esc(settings().tel.replace(/[^\d+]/g, ""))}">📞 緊急なら本社に電話（${esc(settings().tel)}）</a>` : ""}`;
+    $("#resultView").classList.remove("hidden");
+    $("#inputView").classList.add("hidden");
+    updateFooter(); scrollTo(0, 0);
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).then(() => true, () => legacyCopy(text));
+    return Promise.resolve(legacyCopy(text));
+  }
+  function legacyCopy(text) {
+    const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {} ta.remove(); return ok;
+  }
+
+  $("#resultView").addEventListener("click", async (e) => {
+    const id = e.target.closest("[id]")?.id;
+    if (id === "btnGoGemini") {
+      const p = copyText(state.handoff);            // クリック直後にコピー開始
+      const w = window.open(GEMINI_URL, "_blank");  // iOSのポップアップ制限を避けるため同期で開く
+      const ok = await p;
+      if (!ok) { if (w) w.close(); $("#handoffText").parentElement.open = true; return alert("コピーできませんでした。下の指示文を長押しで全選択してコピーしてください。"); }
+      if (!w) location.href = GEMINI_URL;
+    }
+    if (id === "btnShareGemini") {
+      const files = await Promise.all(state.photos.map(async (ph, i) =>
+        new File([await (await fetch(ph.dataUrl)).blob()], `修繕写真_${i + 1}.jpg`, { type: "image/jpeg" })));
+      await copyText(state.handoff);
+      const data = { text: state.handoff, files };
+      try {
+        if (navigator.canShare && navigator.canShare(data)) { await navigator.share(data); toast("指示文はコピー済みです。文字が入っていなければ貼り付けてください"); }
+        else toast("この端末は写真の共有に対応していません。上のボタンを使ってください");
+      } catch (err) { if (err.name !== "AbortError") toast("共有に失敗しました"); }
+    }
+  });
+
   // ---------------- 依頼文生成（第3条①の記載事項を必ず含める） ----------------
   function subjectLine() {
     const r = state.result, s = settings();
@@ -544,9 +627,9 @@ ${q}
   // ---------------- 設定 ----------------
   const F = ["tel", "mail", "mode", "proxy", "pass", "key", "model"];
   function syncModeUI() {
-    const direct = $("#s_mode").value === "direct";
-    $("#s_keyWrap").classList.toggle("hidden", !direct);
-    $("#s_proxyWrap").classList.toggle("hidden", direct);
+    const m = $("#s_mode").value;
+    $("#s_keyWrap").classList.toggle("hidden", m !== "direct");
+    $("#s_proxyWrap").classList.toggle("hidden", m !== "proxy");
   }
   $("#btnSettings").addEventListener("click", () => {
     const s = settings();
@@ -560,7 +643,7 @@ ${q}
   $("#btnSaveSettings").addEventListener("click", () => {
     const s = {}; F.forEach((k) => (s[k] = $(`#s_${k}`).value.trim()));
     if (!s.model) s.model = DEFAULT_MODEL;
-    store.set(LS_SETTINGS, s); $("#dlgSettings").close(); toast("保存しました");
+    store.set(LS_SETTINGS, s); $("#dlgSettings").close(); updateFooter(); toast("保存しました");
   });
 
   // URLパラメータで初期設定を配布できるようにする（例: ?proxy=https://...&tel=03...）
@@ -575,6 +658,8 @@ ${q}
     toast("初期設定を読み込みました");
   })();
 
+
+  updateFooter();
 
   // テスト用フック
   window.__repairai = { state, renderResult, buildRequestText, systemPrompt, schema };
