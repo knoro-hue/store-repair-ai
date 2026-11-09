@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>修繕AI Gem作成</title>
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--text:#111827;--muted:#6b7280;--line:#e5e7eb;--primary:#2563eb}
+@media (prefers-color-scheme: dark){:root{--bg:#0b0f17;--card:#151b26;--text:#e5e7eb;--muted:#9ca3af;--line:#273042}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.6;font-size:16px}
+header{background:#1f2937;color:#fff;padding:14px 16px;padding-top:max(14px,env(safe-area-inset-top));font-weight:700}
+main{max-width:640px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.n{display:inline-flex;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;align-items:center;justify-content:center;font-weight:700;margin-right:8px;font-size:14px}
+h2{font-size:16px;margin:0 0 8px}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:12px;padding:15px;font-size:16px;font-weight:700;background:var(--primary);color:#fff;text-decoration:none;margin-top:10px}
+.btn.sub{background:transparent;color:var(--primary);border:1.5px solid var(--primary)}
+.muted{color:var(--muted);font-size:13px}
+code{background:var(--bg);padding:1px 6px;border-radius:6px}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12px;max-height:240px;overflow:auto}
+.toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px}
+</style>
+</head>
+<body>
+<header>🛠 修繕AI判定 Gemを作る（スマホだけでOK）</header>
+<main>
+  <div class="card">
+    <h2><span class="n">1</span>指示文をコピー</h2>
+    <button class="btn" id="copy" type="button">📋 指示文をコピー</button>
+    <details style="margin-top:10px"><summary class="muted">中身を見る</summary><pre id="txt">読み込み中…</pre></details>
+  </div>
+  <div class="card">
+    <h2><span class="n">2</span>Gemの作成画面を開く</h2>
+    <a class="btn" href="https://gemini.google.com/gems/create" target="_blank" rel="noopener">✨ Gemを作成する</a>
+    <p class="muted">開いたら次のように入力します。<br>
+      ・名前：<code>修繕AI判定</code><br>
+      ・カスタム指示：長押しして <b>貼り付け</b><br>
+      → 右上の「保存」</p>
+    <p class="muted">※Geminiアプリが開いて作成画面が出ない場合は、ブラウザ（Safari/Chrome）で開き、メニューの「PC版サイトを表示」に切り替えてください。</p>
+  </div>
+  <div class="card">
+    <h2><span class="n">3</span>共有リンクを店舗へ</h2>
+    <p class="muted" style="margin:0">保存したGemの「共有」からリンクをコピーし、LINE・Teams・メールで店舗に送ります。店舗は開いて📷で撮って送るだけです。</p>
+  </div>
+</main>
+<script>
+let text = "";
+fetch("gem/GEM_INSTRUCTIONS.md").then(r => { if (!r.ok) throw 0; return r.text(); })
+  .then(t => { text = t; document.getElementById("txt").textContent = t; })
+  .catch(() => { document.getElementById("txt").textContent = "読み込めませんでした。ページを再読み込みしてください。"; });
+function toast(m){const d=document.createElement("div");d.className="toast";d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),2200);}
+document.getElementById("copy").onclick = async () => {
+  if (!text) return toast("読み込み中です。少し待ってください");
+  try { await navigator.clipboard.writeText(text); toast("コピーしました。次へ進んでください"); }
+  catch { const r=document.createRange();const el=document.getElementById("txt");el.parentElement.open=true;r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy");toast("コピーしました"); }
+};
+</script>
+</body>
+</html>
