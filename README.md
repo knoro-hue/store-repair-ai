@@ -9,6 +9,8 @@
 - **本社への依頼文を自動作成** → 写真付きでメール・LINE・Teamsに共有、またはコピー
 - 判定履歴をスマホ内に保存（30件）
 
+> **APIキーなしで使いたい場合は [`gem/`](gem/README.md) を参照**（Gemini の Gem に基準を登録して使う方法。サーバーもキーも不要です）。
+
 判定基準は `criteria.js` にまとめてあります。基準を見直したら（第3条②）このファイルを編集するだけで反映されます。
 
 ## 構成
@@ -17,6 +19,7 @@
 index.html      画面
 app.js          画面の動きとGemini呼び出し
 criteria.js     修繕稟議基準（ここを編集すれば判定ルールが変わる）
+gem/            APIキー不要版（Gemini の Gem 用の指示文）
 worker/         Gemini中継サーバー（Cloudflare Workers）※APIキーを隠すためのもの
 ```
 
