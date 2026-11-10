@@ -166,12 +166,13 @@ dialog .body{padding:18px;max-height:80vh;overflow:auto}
     <p class="muted">この端末のブラウザにだけ保存されます。</p>
     <label>AIへの接続方法</label>
     <select id="s_mode">
-      <option value="nokey">APIキーなし（Geminiアプリに引き継ぐ）</option>
-      <option value="direct">Gemini APIキーを入力する（画面内で判定）</option>
+      <option value="direct">Gemini APIキー（おすすめ：ツール内で自動判定）</option>
       <option value="proxy">中継サーバー経由（キーを店舗に配らない運用向け）</option>
+      <option value="nokey">APIキーなし（Geminiアプリに手動で貼り付け）</option>
     </select>
     <div id="s_keyWrap"><label>Gemini APIキー</label><input id="s_key" type="password" placeholder="AIza..." autocomplete="off">
-      <p class="muted" style="margin:4px 0 0">取得：<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a></p></div>
+      <p class="muted" style="margin:6px 0 0">本社の担当者が1回だけ：<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>でキーを作成 → ここに貼り付けて保存 → 下のボタンで各店舗のスマホに設定リンクを送る（店舗はリンクを開くだけ）</p>
+      <button class="btn sub" type="button" id="btnShareSetup" style="margin-top:10px">📤 他のスマホ用の設定リンクを送る</button></div>
     <div id="s_proxyWrap"><label>中継サーバーURL</label><input id="s_proxy" placeholder="https://xxxx.workers.dev"><label>パスコード</label><input id="s_pass" type="password"></div>
     <details style="margin-top:16px">
       <summary class="muted">任意：本社の連絡先（緊急時の電話ボタン・メール送信に使用）</summary>

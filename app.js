@@ -25,7 +25,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
   };
   const settings = () => Object.assign(
-    { tel: "", mail: "", mode: "nokey", proxy: "", pass: "", key: "", model: DEFAULT_MODEL },
+    { tel: "", mail: "", mode: "direct", proxy: "", pass: "", key: "", model: DEFAULT_MODEL },
     store.get(LS_SETTINGS, {})
   );
 
@@ -647,17 +647,34 @@ ${q}
   });
 
   // URLパラメータで初期設定を配布できるようにする（例: ?proxy=https://...&tel=03...）
-  (function bootstrapFromQuery() {
+  // キーは # 以降（フラグメント）で受け取る：サーバーやアクセスログに送られない
+  (function bootstrapFromUrl() {
     const q = new URLSearchParams(location.search);
-    const keys = ["tel", "mail", "proxy", "model"].filter((k) => q.has(k));
-    if (!keys.length) return;
-    const s = settings(); keys.forEach((k) => (s[k] = q.get(k)));
-    if (q.has("proxy")) s.mode = "proxy";
+    const h = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const s = settings(); let changed = false;
+    for (const src of [q, h]) for (const k of ["tel", "mail", "proxy", "model", "key", "pass"]) {
+      if (src.has(k)) { s[k] = src.get(k); changed = true; }
+    }
+    if (!changed) return;
+    if (h.has("key")) s.mode = "direct"; else if (q.has("proxy") || h.has("proxy")) s.mode = "proxy";
     store.set(LS_SETTINGS, s);
     history.replaceState(null, "", location.pathname);
-    toast("初期設定を読み込みました");
+    toast("設定を読み込みました。すぐ使えます");
   })();
 
+  $("#btnShareSetup").addEventListener("click", async () => {
+    const key = $("#s_key").value.trim();
+    if (!key) return toast("先にAPIキーを入力してください");
+    const p = new URLSearchParams({ key });
+    const tel = $("#s_tel").value.trim(), mail = $("#s_mail").value.trim();
+    if (tel) p.set("tel", tel); if (mail) p.set("mail", mail);
+    const url = `${location.origin}${location.pathname}#${p.toString()}`;
+    const text = "修繕AI判定ツールの設定リンクです。スマホで開くと設定が終わります（社外秘：転送しないでください）。開いたら「ホーム画面に追加」してください。";
+    try {
+      if (navigator.share) await navigator.share({ title: "修繕AI判定 設定リンク", text, url });
+      else { await navigator.clipboard.writeText(`${text}\n${url}`); toast("リンクをコピーしました"); }
+    } catch (err) { if (err.name !== "AbortError") toast("共有できませんでした"); }
+  });
 
   updateFooter();
 
