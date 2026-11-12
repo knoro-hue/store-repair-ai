@@ -39,13 +39,13 @@ export default {
     const model = models.includes(body.model) ? body.model : models[0];
 
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:${body.stream ? "streamGenerateContent?alt=sse" : "generateContent"}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
         body: JSON.stringify(body.payload || {})
       }
     );
-    return new Response(r.body, { status: r.status, headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(r.body, { status: r.status, headers: { ...cors, "Content-Type": r.headers.get("Content-Type") || "application/json" } });
   }
 };

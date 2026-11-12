@@ -54,7 +54,7 @@
     if (e.target.files.length > files.length) toast(`写真は最大${MAX_PHOTOS}枚までです`);
     for (const f of files) {
       try {
-        const dataUrl = await resizeImage(f, 1280, 0.82);
+        const dataUrl = await resizeImage(f, 1024, 0.78);
         const thumb = await resizeImage(f, 240, 0.6);
         state.photos.push({ dataUrl, thumb, base64: dataUrl.split(",")[1], mime: "image/jpeg" });
       } catch { toast("画像を読み込めませんでした"); }
@@ -200,51 +200,119 @@ ${q}
   }
 
   // ---------------- Gemini 呼び出し ----------------
-  async function callGemini(contents) {
-    const s = settings();
-    const model = (s.model || DEFAULT_MODEL).trim();
-    const payload = {
-      systemInstruction: { parts: [{ text: systemPrompt() }] },
+  // ---------------- Gemini 呼び出し（ストリーミング＋タイムアウト＋自動リトライ） ----------------
+  const IDLE_TIMEOUT_MS = 45000;   // 45秒データが来なければ打ち切り
+  const TOTAL_TIMEOUT_MS = 120000; // 全体で2分
+
+  function buildPayload(model, contents, opts = {}) {
+    const gc = { temperature: 0.2 };
+    if (opts.json !== false) { gc.responseMimeType = "application/json"; gc.responseSchema = schema; }
+    // Gemini 3 系は思考レベルを low にして応答を速くする（既定は medium）
+    if (/^gemini-3/.test(model)) gc.thinkingConfig = { thinkingLevel: "low" };
+    return {
+      ...(opts.system === false ? {} : { systemInstruction: { parts: [{ text: systemPrompt() }] } }),
       contents,
-      generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema }
+      generationConfig: gc
     };
-    let res;
+  }
+
+  function endpoint(s, model, stream) {
     if (s.mode === "direct") {
       if (!s.key) throw new Error("設定で Gemini APIキーを入力してください。");
-      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: "POST",
+      const m = encodeURIComponent(model);
+      return {
+        url: `https://generativelanguage.googleapis.com/v1beta/models/${m}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`,
         headers: { "Content-Type": "application/json", "x-goog-api-key": s.key },
-        body: JSON.stringify(payload)
-      });
-    } else {
-      if (!s.proxy) throw new Error("設定で中継サーバーURLを入力してください。");
-      res = await fetch(s.proxy.replace(/\/$/, "") + "/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Store-Pass": s.pass || "" },
-        body: JSON.stringify({ model, payload })
-      });
+        wrap: (payload) => payload
+      };
     }
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = body?.error?.message || body?.error || res.statusText;
-      if (res.status === 401 || res.status === 403) throw new Error(`認証エラー：APIキーまたはパスコードを確認してください（${msg}）`);
-      if (res.status === 429) throw new Error("利用上限に達しました。少し待ってから再実行してください。");
-      throw new Error(`AI呼び出しに失敗しました（${res.status}）：${msg}`);
+    if (!s.proxy) throw new Error("設定で中継サーバーURLを入力してください。");
+    return {
+      url: s.proxy.replace(/\/$/, "") + "/analyze",
+      headers: { "Content-Type": "application/json", "X-Store-Pass": s.pass || "" },
+      wrap: (payload) => ({ model, payload, stream })
+    };
+  }
+
+  function httpError(status, bodyText) {
+    let msg = bodyText;
+    try { const b = JSON.parse(bodyText); msg = (Array.isArray(b) ? b[0] : b)?.error?.message || b?.error || bodyText; } catch {}
+    msg = String(msg || "").slice(0, 300);
+    if (status === 400 && /API key/i.test(msg)) return new Error("APIキーが正しくありません。設定でキーを貼り直してください。");
+    if (status === 401 || status === 403) return new Error(`認証エラー：APIキーを確認してください（${msg}）`);
+    if (status === 404) return new Error(`モデルが見つかりません。設定のモデル名を確認してください（${msg}）`);
+    if (status === 429) return new Error("利用上限に達しました。1分ほど待ってから再実行してください。");
+    if (status >= 500) return Object.assign(new Error(`Gemini側で一時的なエラーが発生しました（${status}）`), { retryable: true });
+    return new Error(`AI呼び出しに失敗しました（${status}）：${msg}`);
+  }
+
+  async function callOnce(contents, onProgress) {
+    const s = settings();
+    const model = (s.model || DEFAULT_MODEL).trim();
+    const ep = endpoint(s, model, true);
+    const ctrl = new AbortController();
+    let idle = setTimeout(() => ctrl.abort("idle"), IDLE_TIMEOUT_MS);
+    const total = setTimeout(() => ctrl.abort("total"), TOTAL_TIMEOUT_MS);
+    const bump = () => { clearTimeout(idle); idle = setTimeout(() => ctrl.abort("idle"), IDLE_TIMEOUT_MS); };
+    try {
+      const res = await fetch(ep.url, { method: "POST", headers: ep.headers, body: JSON.stringify(ep.wrap(buildPayload(model, contents))), signal: ctrl.signal });
+      bump();
+      if (!res.ok) throw httpError(res.status, await res.text());
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", text = "", finish = "", block = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bump();
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith("data:")) continue;
+          let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          const c = ev.candidates?.[0];
+          const t = c?.content?.parts?.filter((p) => !p.thought).map((p) => p.text || "").join("") || "";
+          text += t; if (c?.finishReason) finish = c.finishReason;
+          if (ev.promptFeedback?.blockReason) block = ev.promptFeedback.blockReason;
+          onProgress?.(text.length);
+        }
+      }
+      if (!text) throw new Error(`AIから回答がありませんでした（${block || finish || "不明"}）`);
+      let json;
+      try { json = JSON.parse(text); }
+      catch { throw Object.assign(new Error(finish === "MAX_TOKENS" ? "回答が長すぎて途中で切れました。" : "AIの回答形式が不正でした。"), { retryable: true }); }
+      return { text, json };
+    } catch (err) {
+      if (err.name === "AbortError" || ctrl.signal.aborted) {
+        throw Object.assign(new Error("AIの応答がタイムアウトしました。電波の良い場所で再実行してください。"), { retryable: true });
+      }
+      if (err instanceof TypeError) { // Safari: "Load failed" / Chrome: "Failed to fetch"
+        throw Object.assign(new Error(`通信が切れました（${err.message}）。判定中に画面を閉じたりアプリを切り替えると切れます。電波を確認して再実行してください。`), { retryable: true });
+      }
+      throw err;
+    } finally { clearTimeout(idle); clearTimeout(total); }
+  }
+
+  async function callGemini(contents, onProgress) {
+    try { return await callOnce(contents, onProgress); }
+    catch (err) {
+      if (!err.retryable) throw err;
+      onProgress?.(-1); // 再試行中
+      return await callOnce(contents, onProgress);
     }
-    const cand = body.candidates?.[0];
-    const text = cand?.content?.parts?.map((p) => p.text || "").join("") || "";
-    if (!text) throw new Error(`AIから回答がありませんでした（${cand?.finishReason || body.promptFeedback?.blockReason || "不明"}）`);
-    let json;
-    try { json = JSON.parse(text); } catch { throw new Error("AIの回答形式が不正でした。もう一度お試しください。"); }
-    return { text, json };
   }
 
   async function run(contents) {
     const btn = $("#btnAnalyze");
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner"></span>AIが判定中…（10〜20秒）`;
+    const t0 = Date.now(); let phase = "AIが判定中";
+    const paint = () => { btn.innerHTML = `<span class="spinner"></span>${phase}… ${Math.round((Date.now() - t0) / 1000)}秒`; };
+    paint(); const tick = setInterval(paint, 1000);
+    let lock = null;
+    try { lock = await navigator.wakeLock?.request("screen"); } catch {}
     try {
-      const { text, json } = await callGemini(contents);
+      const { text, json } = await callGemini(contents, (n) => { phase = n < 0 ? "再試行中" : n > 0 ? "回答を受信中" : phase; });
       state.turns = [...contents, { role: "model", parts: [{ text }] }];
       state.result = json;
       saveHistory();
@@ -253,8 +321,32 @@ ${q}
     } catch (err) {
       alert(err.message || String(err));
     } finally {
+      clearInterval(tick);
+      try { await lock?.release(); } catch {}
       btn.disabled = false;
       updateFooter();
+    }
+  }
+
+  // 設定画面の「接続テスト」：写真なし・短い文章で、キーとモデルが使えるかを数秒で確認
+  async function connectionTest() {
+    const out = $("#testResult"); out.textContent = "テスト中…";
+    const s = Object.assign(settings(), {
+      mode: $("#s_mode").value, key: $("#s_key").value.trim(), proxy: $("#s_proxy").value.trim(),
+      pass: $("#s_pass").value.trim(), model: $("#s_model").value.trim() || DEFAULT_MODEL
+    });
+    const t0 = Date.now();
+    try {
+      const ep = endpoint(s, s.model, false);
+      const payload = buildPayload(s.model, [{ role: "user", parts: [{ text: "「OK」とだけ返してください。" }] }], { json: false, system: false });
+      const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 30000);
+      const res = await fetch(ep.url, { method: "POST", headers: ep.headers, body: JSON.stringify(ep.wrap(payload)), signal: ctrl.signal });
+      clearTimeout(to);
+      const bodyText = await res.text();
+      if (!res.ok) throw httpError(res.status, bodyText);
+      out.textContent = `✅ 接続OK（${s.model}、${((Date.now() - t0) / 1000).toFixed(1)}秒）`;
+    } catch (err) {
+      out.textContent = `❌ ${err.name === "AbortError" ? "30秒以内に応答がありませんでした" : err instanceof TypeError ? `通信エラー（${err.message}）` : err.message}`;
     }
   }
 
@@ -403,7 +495,7 @@ ${q}
     }
     if (e.target.id === "addPhoto") {
       for (const f of [...e.target.files].slice(0, MAX_PHOTOS)) {
-        const dataUrl = await resizeImage(f, 1280, 0.82), thumb = await resizeImage(f, 240, 0.6);
+        const dataUrl = await resizeImage(f, 1024, 0.78), thumb = await resizeImage(f, 240, 0.6);
         (state.extraPhotos ||= []).push({ dataUrl, thumb, base64: dataUrl.split(",")[1], mime: "image/jpeg" });
       }
       $("#addThumbs").innerHTML = state.extraPhotos.map((p) => `<div><img src="${p.thumb}" alt=""></div>`).join("");
@@ -639,6 +731,7 @@ ${q}
     $("#dlgSettings").showModal();
   });
   $("#s_mode").addEventListener("change", syncModeUI);
+  $("#btnTest").addEventListener("click", connectionTest);
   $("#btnCloseSettings").addEventListener("click", () => $("#dlgSettings").close());
   $("#btnSaveSettings").addEventListener("click", () => {
     const s = {}; F.forEach((k) => (s[k] = $(`#s_${k}`).value.trim()));
